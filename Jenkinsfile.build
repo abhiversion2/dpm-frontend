@@ -12,6 +12,7 @@ pipeline {
             steps {
                 script {
                     if (env.JOB_NAME.contains('frontend')) {
+                        sh 'npm install'
                         sh 'npm ci'
                     } else {
                         // Backend: replace with your command (e.g. mvn dependency:go-offline, pip install, etc.)
