@@ -22,8 +22,11 @@ pipeline {
         }
     }
     post {
-        always {
-            cleanWs()
+    always {
+        script {
+            if (env.WORKSPACE) {
+                cleanWs()
+            }
         }
     }
 }
