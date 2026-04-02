@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'aws linux' }
+    agent { label 'awslinux' }
 
     stages {
         stage('Checkout') {
