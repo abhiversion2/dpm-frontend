@@ -7,12 +7,7 @@ pipeline {
         IMAGE_NAME    = 'dpm-frontend'
         PORT          = '80'          // Change if you want to expose on a different host port
     }
-
-    triggers {
-        // This works with Bitbucket webhook + Bitbucket Push and Pull Request plugin
-        // Or with Multibranch Pipeline scanning
-    }
-
+    
     stages {
         stage('Checkout Code') {
             steps {
