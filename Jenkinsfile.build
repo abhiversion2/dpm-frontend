@@ -1,0 +1,29 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    if (env.JOB_NAME.contains('frontend')) {
+                        sh 'npm ci'
+                    } else {
+                        // Backend: replace with your command (e.g. mvn dependency:go-offline, pip install, etc.)
+                        sh 'echo "Backend dependency install here"'
+                    }
+                }
+            }
+        }
+        
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
