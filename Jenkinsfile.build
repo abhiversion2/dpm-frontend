@@ -75,7 +75,7 @@ pipeline {
                         --name ${CONTAINER_NAME} \
                         -p ${PORT}:80 \
                         --restart unless-stopped \
-                        ${IMAGE_NAME}:${BUILD_NUMBER}
+                        ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER}
                 """
 
                 echo "Deployment completed successfully!"
@@ -101,6 +101,7 @@ pipeline {
             echo "❌ Pipeline failed. Check logs for details."
         }
         always {
+            sh 'docker image prune -f || true'
             script {
                 if (env.WORKSPACE) {
                     cleanWs()
