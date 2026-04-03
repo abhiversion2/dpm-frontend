@@ -34,47 +34,25 @@ pipeline {
                 echo "Building Docker image using the provided Dockerfile..."
                 script {
                     // Build the image with a tag including build number
-                    sh """
-                        docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
-                        docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
-                    """
+                    sh 'docker build -t vishwakarmaabhijeet739/hogan-dpm:latest .'
                 }
             }
         }
 
-        stage('Deploy Application') {
+        stage('Login to Docker Hub') {
             steps {
-                echo "Stopping and removing old container if it exists..."
-                script {
-                    // Stop and remove old container (ignore errors if it doesn't exist)
-                    sh """
-                        docker stop ${CONTAINER_NAME} || true
-                        docker rm ${CONTAINER_NAME} || true
-                    """
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh 'echo $PASS | docker login -u $USER --password-stdin'
                 }
-
-                echo "Starting new container..."
-                sh """
-                    docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        -p ${PORT}:80 \
-                        --restart unless-stopped \
-                        ${IMAGE_NAME}:${BUILD_NUMBER}
-                """
-
-                echo "Deployment completed successfully!"
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Push Image') {
             steps {
-                echo "Checking if container is running..."
-                sh """
-                    docker ps | grep ${CONTAINER_NAME}
-                    echo "Application should be accessible at http://<your-server-ip>:${PORT}"
-                """
+                sh 'docker push vishwakarmaabhijeet739/hogan-dpm:latest'
             }
         }
+
     }
     post {
         success {
@@ -84,7 +62,6 @@ pipeline {
             echo "❌ Pipeline failed. Check logs for details."
         }
         always {
-            sh 'docker image prune -f || true'
             script {
                 if (env.WORKSPACE) {
                     cleanWs()
