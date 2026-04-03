@@ -19,7 +19,6 @@ pipeline {
             steps {
                 script {
                     if (env.JOB_NAME.contains('frontend')) {
-                        sh 'npm install'
                         sh 'npm ci'
                     } else {
                         // Backend: replace with your command (e.g. mvn dependency:go-offline, pip install, etc.)
@@ -34,7 +33,7 @@ pipeline {
                 echo "Building Docker image using the provided Dockerfile..."
                 script {
                     // Build the image with a tag including build number
-                    sh 'docker build -t vishwakarmaabhijeet739/hogan-dpm:latest .'
+                    sh 'docker build -t vishwakarmaabhijeet739/dpm-frontend:${BUILD_NUMBER} .'
                 }
             }
         }
@@ -49,7 +48,7 @@ pipeline {
 
         stage('Push Image') {
             steps {
-                sh 'docker push vishwakarmaabhijeet739/hogan-dpm:latest'
+                sh 'docker push vishwakarmaabhijeet739/dpm-frontend:${BUILD_NUMBER}'
             }
         }
 
