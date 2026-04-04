@@ -4,8 +4,8 @@ pipeline {
     environment {
         APP_NAME      = 'dpm-frontend'
         DOCKERHUB_USERNAME = 'vishwakarmaabhijeet739'
-        CONTAINER_NAME = 'dpm-frontend-container'
-        IMAGE_NAME    = 'dpm-frontend'
+        CONTAINER_NAME = 'hogan-dpm-frontend-container'
+        IMAGE_NAME    = 'hogan-dpm-frontend'
         PORT          = '80'          // Change if you want to expose on a different host port
     }
 
@@ -30,17 +30,40 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Tag Docker Image') {
             steps {
-                echo "Building Docker image using the provided Dockerfile..."
+                echo "Building Docker and tagging image using the provided Dockerfile..."
                 script {
-                    // Build the image with a tag including build number
+                    def envTag = ""
+
+                    if (env.BRANCH_NAME == "develop") {
+                        envTag = "dev"
+                    } else if (env.BRANCH_NAME == "test") {
+                        envTag = "test"
+                    }
+
+                    def buildTag = "${envTag}-${env.BUILD_NUMBER}"
+                    def latestTag = "${envTag}-latest"
+
                     sh """
-                        docker build -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER} .
-                    """                
+                        docker build -t $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag .
+                        docker tag $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
+                    """
                 }
             }
         }
+
+        // stage('Build Docker Image') {
+        //     steps {
+        //         echo "Building Docker image using the provided Dockerfile..."
+        //         script {
+        //             // Build the image with a tag including build number
+        //             sh """
+        //                 docker build -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER} .
+        //             """                
+        //         }
+        //     }
+        // }
 
         stage('Login to Docker Hub') {
             steps {
@@ -50,10 +73,19 @@ pipeline {
             }
         }
 
+        // stage('Push Image') {
+        //     steps {
+        //         sh """
+        //             docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER}
+        //         """
+        //     }
+        // }
+
         stage('Push Image') {
             steps {
                 sh """
-                    docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER}
+                    docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag
+                    docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
                 """
             }
         }
@@ -62,22 +94,31 @@ pipeline {
             steps {
                 echo "Stopping and removing old container if it exists..."
                 script {
+                    def envTag = ""
+
+                    if (env.BRANCH_NAME == "develop") {
+                        envTag = "dev"
+                    } else if (env.BRANCH_NAME == "test") {
+                        envTag = "test"
+                    }
+
+                    env.IMAGE_TAG = "${envTag}-latest"
+
                     // Stop and remove old container (ignore errors if it doesn't exist)
                     sh """
                         docker stop ${CONTAINER_NAME} || true
                         docker rm ${CONTAINER_NAME} || true
                     """
+
+                    echo "Starting new container..."
+                    sh """
+                        docker run -d \
+                            --name ${CONTAINER_NAME} \
+                            -p ${PORT}:80 \
+                            --restart unless-stopped \
+                            ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                    """
                 }
-
-                echo "Starting new container..."
-                sh """
-                    docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        -p ${PORT}:80 \
-                        --restart unless-stopped \
-                        ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER}
-                """
-
                 echo "Deployment completed successfully!"
             }
         }
