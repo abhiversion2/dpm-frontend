@@ -83,10 +83,23 @@ pipeline {
 
         stage('Push Image') {
             steps {
-                sh """
-                    docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag
-                    docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
-                """
+                script {
+                    def envTag = ""
+
+                    if (env.BRANCH_NAME == "develop") {
+                        envTag = "dev"
+                    } else if (env.BRANCH_NAME == "test") {
+                        envTag = "test"
+                    }
+
+                    def buildTag = "${envTag}-${env.BUILD_NUMBER}"
+                    def latestTag = "${envTag}-latest"
+
+                    sh """
+                        docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag
+                        docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
+                    """
+                }
             }
         }
 
