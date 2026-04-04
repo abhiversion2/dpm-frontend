@@ -45,6 +45,7 @@ pipeline {
                     def buildTag = "${envTag}-${env.BUILD_NUMBER}"
                     def latestTag = "${envTag}-latest"
 
+                    // Build the image with a tag including build number
                     sh """
                         docker build -t $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag .
                         docker tag $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
@@ -53,18 +54,6 @@ pipeline {
             }
         }
 
-        // stage('Build Docker Image') {
-        //     steps {
-        //         echo "Building Docker image using the provided Dockerfile..."
-        //         script {
-        //             // Build the image with a tag including build number
-        //             sh """
-        //                 docker build -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER} .
-        //             """                
-        //         }
-        //     }
-        // }
-
         stage('Login to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
@@ -72,14 +61,6 @@ pipeline {
                 }
             }
         }
-
-        // stage('Push Image') {
-        //     steps {
-        //         sh """
-        //             docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER}
-        //         """
-        //     }
-        // }
 
         stage('Push Image') {
             steps {
