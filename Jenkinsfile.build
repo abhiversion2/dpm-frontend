@@ -1,0 +1,147 @@
+pipeline {
+    agent { label 'awslinux' }
+
+    environment {
+        APP_NAME      = 'dpm-frontend'
+        DOCKERHUB_USERNAME = 'vishwakarmaabhijeet739'
+        CONTAINER_NAME = 'hogan-dpm-frontend-container'
+        IMAGE_NAME    = 'hogan-dpm-frontend'
+        PORT          = '80'          // Change if you want to expose on a different host port
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    if (env.JOB_NAME.contains('frontend')) {
+                        sh 'npm install'
+                        sh 'npm ci'
+                    } else {
+                        // Backend: replace with your command (e.g. mvn dependency:go-offline, pip install, etc.)
+                        sh 'echo "Backend dependency install here"'
+                    }
+                }
+            }
+        }
+
+        stage('Build & Tag Docker Image') {
+            steps {
+                echo "Building Docker and tagging image using the provided Dockerfile..."
+                script {
+                    def envTag = ""
+
+                    if (env.BRANCH_NAME == "develop") {
+                        envTag = "dev"
+                    } else if (env.BRANCH_NAME == "test") {
+                        envTag = "test"
+                    }
+
+                    def buildTag = "${envTag}-${env.BUILD_NUMBER}"
+                    def latestTag = "${envTag}-latest"
+
+                    // Build the image with a tag including build number
+                    sh """
+                        docker build -t $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag .
+                        docker tag $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
+                    """
+                }
+            }
+        }
+
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh 'echo $PASS | docker login -u $USER --password-stdin'
+                }
+            }
+        }
+
+        stage('Push Image') {
+            steps {
+                script {
+                    def envTag = ""
+
+                    if (env.BRANCH_NAME == "develop") {
+                        envTag = "dev"
+                    } else if (env.BRANCH_NAME == "test") {
+                        envTag = "test"
+                    }
+
+                    def buildTag = "${envTag}-${env.BUILD_NUMBER}"
+                    def latestTag = "${envTag}-latest"
+
+                    sh """
+                        docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag
+                        docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Application') {
+            steps {
+                echo "Stopping and removing old container if it exists..."
+                script {
+                    def envTag = ""
+
+                    if (env.BRANCH_NAME == "develop") {
+                        envTag = "dev"
+                    } else if (env.BRANCH_NAME == "test") {
+                        envTag = "test"
+                    }
+
+                    env.IMAGE_TAG = "${envTag}-latest"
+
+                    // Stop and remove old container (ignore errors if it doesn't exist)
+                    sh """
+                        docker stop ${CONTAINER_NAME} || true
+                        docker rm ${CONTAINER_NAME} || true
+                    """
+
+                    echo "Starting new container..."
+                    sh """
+                        docker run -d \
+                            --name ${CONTAINER_NAME} \
+                            -p ${PORT}:80 \
+                            --restart unless-stopped \
+                            ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+                }
+                echo "Deployment completed successfully!"
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                echo "Checking if container is running..."
+                sh """
+                    docker ps | grep ${CONTAINER_NAME}
+                    echo "Application should be accessible at http://<your-server-ip>:${PORT}"
+                """
+            }
+        }
+
+    }
+    post {
+        success {
+            echo "✅ Pipeline succeeded! React app deployed via Docker."
+        }
+        failure {
+            echo "❌ Pipeline failed. Check logs for details."
+        }
+        always {
+            sh 'docker image prune -f || true'
+            script {
+                if (env.WORKSPACE) {
+                    cleanWs()
+                }
+            }
+        }
+    }
+}
