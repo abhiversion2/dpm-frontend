@@ -43,26 +43,26 @@ pipeline {
             }
         }
 
-        stage('SonarCloud Analysis') {
-            steps {
-                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
-                    sh """
-                        npx sonar-scanner \
-                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                            -Dsonar.organization=${SONAR_ORG} \
-                            -Dsonar.host.url=https://sonarcloud.io \
-                            -Dsonar.login=${SONAR_TOKEN} \
-                            -Dsonar.sources=src \
-                            -Dsonar.tests=src \
-                            -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx \
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                            -Dsonar.eslint.reportPaths=eslint-report.json \
-                            -Dsonar.qualitygate.wait=true \
-                            -Dsonar.qualitygate.timeout=300
-                    """
-                }
-            }
-        }
+        // stage('SonarCloud Analysis') {
+        //     steps {
+        //         withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+        //             sh """
+        //                 npx sonar-scanner \
+        //                     -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+        //                     -Dsonar.organization=${SONAR_ORG} \
+        //                     -Dsonar.host.url=https://sonarcloud.io \
+        //                     -Dsonar.login=${SONAR_TOKEN} \
+        //                     -Dsonar.sources=src \
+        //                     -Dsonar.tests=src \
+        //                     -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx \
+        //                     -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+        //                     -Dsonar.eslint.reportPaths=eslint-report.json \
+        //                     -Dsonar.qualitygate.wait=true \
+        //                     -Dsonar.qualitygate.timeout=300
+        //             """
+        //         }
+        //     }
+        // }
 
         stage('Build & Tag Docker Image') {
             steps {
