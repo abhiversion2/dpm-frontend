@@ -20,6 +20,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
+                sh 'npm install'
                 sh 'npm ci'   // ci is stricter + faster than install; removed redundant npm install
             }
         }
