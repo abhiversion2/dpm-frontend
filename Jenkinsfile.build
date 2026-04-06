@@ -2,11 +2,13 @@ pipeline {
     agent { label 'awslinux' }
 
     environment {
-        APP_NAME      = 'dpm-frontend'
+        APP_NAME      = 'hogan-dpm-frontend'
         DOCKERHUB_USERNAME = 'vishwakarmaabhijeet739'
         CONTAINER_NAME = 'hogan-dpm-frontend-container'
         IMAGE_NAME    = 'hogan-dpm-frontend'
         PORT          = '80'          // Change if you want to expose on a different host port
+        SONAR_PROJECT_KEY  = 'abhiversion2_dpm-frontend'   // ← update this
+        SONAR_ORG          = 'abhiversion2'  
     }
 
     stages {
@@ -18,14 +20,59 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                script {
-                    if (env.JOB_NAME.contains('frontend')) {
-                        sh 'npm install'
-                        sh 'npm ci'
-                    } else {
-                        // Backend: replace with your command (e.g. mvn dependency:go-offline, pip install, etc.)
-                        sh 'echo "Backend dependency install here"'
-                    }
+                sh 'npm ci'   // ci is stricter + faster than install; removed redundant npm install
+            }
+        }
+
+        // stage('Install Dependencies') {
+        //     steps {
+        //         script {
+        //             if (env.JOB_NAME.contains('frontend')) {
+        //                 sh 'npm install'
+        //                 sh 'npm ci'
+        //             } else {
+        //                 // Backend: replace with your command (e.g. mvn dependency:go-offline, pip install, etc.)
+        //                 sh 'echo "Backend dependency install here"'
+        //             }
+        //         }
+        //     }
+        // }
+
+        stage('ESLint') {
+            steps {
+                sh 'npm run lint'
+                // To emit a report consumed by SonarCloud, use:
+                // sh 'npm run lint -- --format json --output-file eslint-report.json || true'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                // Generates coverage/lcov.info used by SonarCloud
+                sh 'npm test -- --coverage --watchAll=false --ci'
+            }
+            post {
+                always {
+                    // Publish JUnit results if your test runner outputs XML
+                    junit allowEmptyResults: true, testResults: '**/test-results/*.xml'
+                }
+            }
+        }
+
+        stage('SonarCloud Analysis') {
+            steps {
+                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+                    sh """
+                        npx sonar-scanner \
+                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                            -Dsonar.organization=${SONAR_ORG} \
+                            -Dsonar.host.url=https://sonarcloud.io \
+                            -Dsonar.login=${SONAR_TOKEN} \
+                            -Dsonar.sources=src \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+                            -Dsonar.qualitygate.wait=true \
+                            -Dsonar.qualitygate.timeout=300
+                    """
                 }
             }
         }
