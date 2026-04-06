@@ -39,11 +39,19 @@ pipeline {
         //     }
         // }
 
+        // stage('ESLint') {
+        //     steps {
+        //         sh 'npm run lint'
+        //         // To emit a report consumed by SonarCloud, use:
+        //         // sh 'npm run lint -- --format json --output-file eslint-report.json || true'
+        //     }
+        // }
+
         stage('ESLint') {
             steps {
-                sh 'npm run lint'
-                // To emit a report consumed by SonarCloud, use:
-                // sh 'npm run lint -- --format json --output-file eslint-report.json || true'
+                sh 'npm run lint -- --format json --output-file eslint-report.json || true'
+                // || true prevents ESLint warnings/errors from failing the stage prematurely
+                // SonarCloud will read eslint-report.json and surface issues in its dashboard
             }
         }
 
@@ -55,7 +63,7 @@ pipeline {
             post {
                 always {
                     // Publish JUnit results if your test runner outputs XML
-                    junit allowEmptyResults: true, testResults: '**/test-results/*.xml'
+                    junit allowEmptyResults: true, testResults: 'test-results/junit.xml'
                 }
             }
         }
