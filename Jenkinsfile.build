@@ -2,13 +2,16 @@ pipeline {
     agent { label 'awslinux' }
 
     environment {
-        APP_NAME           = 'hogan-dpm-frontend'
-        DOCKERHUB_USERNAME = 'vishwakarmaabhijeet739'
+        // DOCKERHUB_USERNAME = 'vishwakarmaabhijeet739'
+        AWS_REGION      = 'us-east-1'
+        AWS_ACCOUNT_ID  = '742231077713'
+        ECR_REPO        = 'hogan-dpm-frontend'
+        ECR_URL         = "742231077713.dkr.ecr.us-east-1.amazonaws.com/hogan-dpm-frontend"
         CONTAINER_NAME     = 'hogan-dpm-frontend-container'
         IMAGE_NAME         = 'hogan-dpm-frontend'
         PORT               = '80'
-        SONAR_PROJECT_KEY  = 'abhiversion2_dpm-frontend'
-        SONAR_ORG          = 'abhiversion2'
+        // SONAR_PROJECT_KEY  = 'abhiversion2_dpm-frontend'
+        // SONAR_ORG          = 'abhiversion2'
     }
 
     stages {
@@ -70,32 +73,40 @@ pipeline {
                     def tags = getImageTags(env.BRANCH_NAME, env.BUILD_NUMBER)
                     sh """
                         docker build \
-                            -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${tags.build} \
-                            -t ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${tags.latest} \
-                            .
+                        -t ${ECR_URL}:${tags.build} \
+                        -t ${ECR_URL}:${tags.latest} \
+                        .
+                    """
+                }
+            }
+        }
+        
+        stage('Login to AWS ECR') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-creds'   // <-- Jenkins AWS credentials
+                ]]) {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} \
+                        | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                     """
                 }
             }
         }
 
-        stage('Push Image') {
+        stage('Push Image to ECR') {
             steps {
                 script {
                     def tags = getImageTags(env.BRANCH_NAME, env.BUILD_NUMBER)
-                    withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'USER',
-                        passwordVariable: 'PASS'
-                    )]) {
-                        sh """
-                            echo \$PASS | docker login -u \$USER --password-stdin
-                            docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${tags.build}
-                            docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${tags.latest}
-                        """
-                    }
+                    sh """
+                        docker push ${ECR_URL}:${tags.build}
+                        docker push ${ECR_URL}:${tags.latest}
+                    """
                 }
             }
         }
+
 
         stage('Deploy') {
             steps {
@@ -103,12 +114,13 @@ pipeline {
                     def tags = getImageTags(env.BRANCH_NAME, env.BUILD_NUMBER)
                     sh """
                         docker stop ${CONTAINER_NAME} || true
-                        docker rm   ${CONTAINER_NAME} || true
+                        docker rm ${CONTAINER_NAME} || true
+
                         docker run -d \
-                            --name ${CONTAINER_NAME} \
-                            -p ${PORT}:80 \
-                            --restart unless-stopped \
-                            ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${tags.latest}
+                        --name ${CONTAINER_NAME} \
+                        -p ${PORT}:80 \
+                        --restart unless-stopped \
+                        ${ECR_URL}:${tags.latest}
                     """
                 }
                 echo "Deployment completed successfully!"
