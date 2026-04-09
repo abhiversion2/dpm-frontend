@@ -36,7 +36,7 @@ function App() {
           style={{ backgroundColor: currentMood.color }}
           onClick={() => alert(`Level ${moodValue} ${currentMood.label} status locked in!`)}
         >
-          Lock In Mood BUtton
+          Lock In Mood
         </button>
       </div>
     </div>

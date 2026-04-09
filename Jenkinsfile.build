@@ -2,14 +2,20 @@ pipeline {
     agent { label 'awslinux' }
 
     environment {
-        APP_NAME      = 'dpm-frontend'
-        DOCKERHUB_USERNAME = 'vishwakarmaabhijeet739'
-        CONTAINER_NAME = 'hogan-dpm-frontend-container'
-        IMAGE_NAME    = 'hogan-dpm-frontend'
-        PORT          = '80'          // Change if you want to expose on a different host port
+        // DOCKERHUB_USERNAME = 'vishwakarmaabhijeet739'
+        AWS_REGION      = 'us-east-1'
+        AWS_ACCOUNT_ID  = '742231077713'
+        ECR_REPO        = 'hogan-dpm-frontend'
+        ECR_URL         = "742231077713.dkr.ecr.us-east-1.amazonaws.com/hogan-dpm-frontend"
+        CONTAINER_NAME     = 'hogan-dpm-frontend-container'
+        IMAGE_NAME         = 'hogan-dpm-frontend'
+        PORT               = '80'
+        // SONAR_PROJECT_KEY  = 'abhiversion2_dpm-frontend'
+        // SONAR_ORG          = 'abhiversion2'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -18,99 +24,98 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                script {
-                    if (env.JOB_NAME.contains('frontend')) {
-                        sh 'npm install'
-                        sh 'npm ci'
-                    } else {
-                        // Backend: replace with your command (e.g. mvn dependency:go-offline, pip install, etc.)
-                        sh 'echo "Backend dependency install here"'
-                    }
+                sh 'npm install'
+                sh 'npm ci'
+            }
+        }
+
+        stage('ESLint') {
+            steps {
+                sh 'npm run lint -- --format json --output-file eslint-report.json || true'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'node scripts/test-ci.js'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'test-results/junit.xml'
                 }
             }
         }
+
+        // stage('SonarCloud Analysis') {
+        //     steps {
+        //         withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+        //             sh """
+        //                 npx sonar-scanner \
+        //                     -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+        //                     -Dsonar.organization=${SONAR_ORG} \
+        //                     -Dsonar.host.url=https://sonarcloud.io \
+        //                     -Dsonar.login=${SONAR_TOKEN} \
+        //                     -Dsonar.sources=src \
+        //                     -Dsonar.tests=src \
+        //                     -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx \
+        //                     -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+        //                     -Dsonar.eslint.reportPaths=eslint-report.json \
+        //                     -Dsonar.qualitygate.wait=true \
+        //                     -Dsonar.qualitygate.timeout=300
+        //             """
+        //         }
+        //     }
+        // }
 
         stage('Build & Tag Docker Image') {
             steps {
-                echo "Building Docker and tagging image using the provided Dockerfile..."
                 script {
-                    def envTag = ""
-
-                    if (env.BRANCH_NAME == "develop") {
-                        envTag = "dev"
-                    } else if (env.BRANCH_NAME == "test") {
-                        envTag = "test"
-                    }
-
-                    def buildTag = "${envTag}-${env.BUILD_NUMBER}"
-                    def latestTag = "${envTag}-latest"
-
-                    // Build the image with a tag including build number
+                    def tags = getImageTags(env.BRANCH_NAME, env.BUILD_NUMBER)
                     sh """
-                        docker build -t $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag .
-                        docker tag $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
+                        docker build \
+                        -t ${ECR_URL}:${tags.build} \
+                        -t ${ECR_URL}:${tags.latest} \
+                        .
+                    """
+                }
+            }
+        }
+        
+        stage('Login to AWS ECR') {
+            steps {
+                sh """
+                    aws ecr get-login-password --region ${AWS_REGION} \
+                    | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                """
+            }
+        }
+
+        stage('Push Image to ECR') {
+            steps {
+                script {
+                    def tags = getImageTags(env.BRANCH_NAME, env.BUILD_NUMBER)
+                    sh """
+                        docker push ${ECR_URL}:${tags.build}
+                        docker push ${ECR_URL}:${tags.latest}
                     """
                 }
             }
         }
 
-        stage('Login to Docker Hub') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh 'echo $PASS | docker login -u $USER --password-stdin'
-                }
-            }
-        }
 
-        stage('Push Image') {
+        stage('Deploy') {
             steps {
                 script {
-                    def envTag = ""
-
-                    if (env.BRANCH_NAME == "develop") {
-                        envTag = "dev"
-                    } else if (env.BRANCH_NAME == "test") {
-                        envTag = "test"
-                    }
-
-                    def buildTag = "${envTag}-${env.BUILD_NUMBER}"
-                    def latestTag = "${envTag}-latest"
-
-                    sh """
-                        docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$buildTag
-                        docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$latestTag
-                    """
-                }
-            }
-        }
-
-        stage('Deploy Application') {
-            steps {
-                echo "Stopping and removing old container if it exists..."
-                script {
-                    def envTag = ""
-
-                    if (env.BRANCH_NAME == "develop") {
-                        envTag = "dev"
-                    } else if (env.BRANCH_NAME == "test") {
-                        envTag = "test"
-                    }
-
-                    env.IMAGE_TAG = "${envTag}-latest"
-
-                    // Stop and remove old container (ignore errors if it doesn't exist)
+                    def tags = getImageTags(env.BRANCH_NAME, env.BUILD_NUMBER)
                     sh """
                         docker stop ${CONTAINER_NAME} || true
                         docker rm ${CONTAINER_NAME} || true
-                    """
 
-                    echo "Starting new container..."
-                    sh """
                         docker run -d \
-                            --name ${CONTAINER_NAME} \
-                            -p ${PORT}:80 \
-                            --restart unless-stopped \
-                            ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                        --name ${CONTAINER_NAME} \
+                        -p ${PORT}:80 \
+                        --restart unless-stopped \
+                        ${ECR_URL}:${tags.latest}
                     """
                 }
                 echo "Deployment completed successfully!"
@@ -119,15 +124,14 @@ pipeline {
 
         stage('Verify Deployment') {
             steps {
-                echo "Checking if container is running..."
                 sh """
-                    docker ps | grep ${CONTAINER_NAME}
-                    echo "Application should be accessible at http://<your-server-ip>:${PORT}"
+                    docker ps --filter name=${CONTAINER_NAME} --format '{{.Status}}' | grep -i up
+                    echo "App accessible at http://<your-server-ip>:${PORT}"
                 """
             }
         }
-
     }
+
     post {
         success {
             echo "✅ Pipeline succeeded! React app deployed via Docker."
@@ -137,11 +141,16 @@ pipeline {
         }
         always {
             sh 'docker image prune -f || true'
-            script {
-                if (env.WORKSPACE) {
-                    cleanWs()
-                }
-            }
+            cleanWs()
         }
     }
+}
+
+// ── Shared helper — eliminates duplicated envTag logic ─────────────────────────
+def getImageTags(String branch, String buildNumber) {
+    def envTag = branch == 'develop' ? 'dev' : branch == 'test' ? 'test' : 'build'
+    return [
+        build : "${envTag}-${buildNumber}",
+        latest: "${envTag}-latest"
+    ]
 }
